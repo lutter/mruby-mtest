@@ -9,7 +9,9 @@ module MTest
   ##
   # Assertion base class
 
-  class Assertion < Exception; end
+  class Assertion < Exception
+    attr_accessor :caller
+  end
 
   ##
   # Assertion raised when skipping a test
@@ -42,7 +44,15 @@ module MTest
       self._assertions += 1
       unless test
         msg = msg.call if Proc === msg
-        raise MTest::Assertion, msg
+        # FIXME: Work around bug in mruby nacktrace handling.
+        # should be fixed in mruby 1.3.0
+        # see https://github.com/mruby/mruby/issues/2902
+        begin
+          raise MTest::Assertion, msg
+        rescue Exception => e
+          e.caller = e.backtrace[1].dup
+          raise e
+        end
       end
       true
     end
@@ -413,9 +423,9 @@ module MTest
 
     def puke klass, meth, e
       # dirty hack to find the actual filename and line number that the assertion failed at
-      loc = e.backtrace.find {|l| !l.include?(':in MTest::')}
+      loc = e.caller
       if loc
-        idx = loc.rindex(':in ') 
+        idx = loc.rindex(':in ')
         loc = idx.nil? ? "#{loc}: #{e.message}" : "#{loc[0, idx]}: #{e.message} (#{e.class})"
       else
         loc = e.inspect
